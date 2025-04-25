@@ -8,6 +8,7 @@ This project implements TPC-H Query 5 in Java using multithreading to improve pe
 - Filters and joins data in-memory without using a DBMS.
 - Multithreaded line item processing for better performance.
 - Outputs results sorted by revenue per nation.
+- Supports command-line configuration for region, date range, and number of threads.
 
 ## Requirements
 - Java 8 or higher
@@ -26,7 +27,7 @@ tpch-query5/
 
 ## How to Build
 ```bash
-javac -d out src/*.java src/model/*.java src/utils/*.java
+javac -d out src/*.java src/model/*.java src/utils/*.java src/parser/*.java
 ```
 
 ## How to Run
@@ -42,11 +43,19 @@ java -Xmx4g -cp out Main \
 
 ## Output Example
 ```
-INDIA: 1808514891.98
-INDONESIA: 1772198392.63
-VIETNAM: 1768665739.23
-CHINA: 1752398058.53
-JAPAN: 1639749208.13
+Multi-threaded execution time: 326 ms
+Single-threaded execution time: 459 ms
+==== Runtime Summary ====
+Multi-threaded time: 326 ms
+Single-threaded time: 459 ms
+Speedup: 1.41x
+CHINA: 269846053.23
+INDONESIA: 269039572.94
+VIETNAM: 268544386.56
+INDIA: 268003150.58
+JAPAN: 250022486.48
+✅ Results saved to: /mnt/c/Users/rajal/Projects/tpch-query5/./results/query5_result.txt
+
 ```
 
 ## Generating TPC-H `.tbl` Files
@@ -65,6 +74,7 @@ To generate `.tbl` files:
 ## Notes
 - Use `-Xmx4g` or adjust JVM memory settings depending on your machine's available memory.
 - Ensure `.tbl` files use the `|` delimiter as expected.
+- For more details on the implementation, refer to the report.md.
 
 ## License
 This repository is for educational purposes only and does not redistribute TPC-H data generation code.

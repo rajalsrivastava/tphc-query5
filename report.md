@@ -41,17 +41,23 @@ This project implements TPC-H Query 5 in Java using multithreading to improve pe
 
 ## Challenges Encountered
 
-- **Parsing large files efficiently:** Required optimized reading to avoid memory bottlenecks.
-- **Ensuring thread safety:** Using `ConcurrentHashMap` and avoiding shared mutable state.
-- **Joining multiple tables without a DBMS:** Handled all joins in-memory using `Map` and `Set` structures.
-- **Command-line argument parsing:** Built a minimal parser to support user input.
+- **Parsing large files efficiently:** Optimized reading to avoid memory bottlenecks and ensure smooth operation with large datasets.
+- **Ensuring thread safety:** Leveraged ConcurrentHashMap for thread-safe revenue accumulation, avoiding shared mutable states.
+- **Joining multiple tables without a DBMS:** Handled all joins in-memory using Map and Set structures, ensuring efficient and correct data processing.
+- **Command-line argument parsing:** BBuilt a minimal parser to support dynamic input for region, date range, number of threads, and directory paths.
 
 ## Lessons Learned
 
-- Importance of clean separation of concerns for parsing, filtering, and computation.
-- Hands-on experience with Java's concurrency API.
-- How to simulate database joins and queries in pure Java.
-- Better appreciation for memory management and thread coordination.
+- Importance of clean separation of concerns for parsing, filtering, and computation, which helped with maintaining a modular and easy-to-understand codebase.
+- Hands-on experience with Java's concurrency API and managing multi-threaded tasks.
+- Simulated database joins and queries efficiently in Java without the use of a DBMS.
+- Gained insights into memory management and thread coordination when working with large datasets.
+
+## Performance Metrics
+
+- Single-threaded execution time: 459 ms
+- Multi-threaded execution time: 326 ms
+- Speedup: 1.41x
 
 ---
 

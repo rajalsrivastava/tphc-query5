@@ -1,17 +1,11 @@
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
+import java.io.*;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
-import utils.DataLoader;
-import model.Customer;
-import model.Order;
-import model.LineItem;
-import model.Supplier;
-import model.Nation;
-import model.Region;
 import java.util.stream.Collectors;
+import model.*;
+import utils.DataLoader;
 
 public class Main {
 
@@ -21,8 +15,8 @@ public class Main {
         String startDate = "1994-01-01";
         String endDate = "1995-01-01";
         int numThreads = 10;
-        String dataDir = "./data"; // Default data directory
-        String resultDir = "./results"; // Default result directory
+        String dataDir = "./data";
+        String resultDir = "./results";
 
         // Parse command-line arguments
         for (int i = 0; i < args.length; i++) {
@@ -49,79 +43,127 @@ public class Main {
         List<Nation> nations = DataLoader.loadNations(dataDir + "/nation.tbl");
         List<Region> regions = DataLoader.loadRegions(dataDir + "/region.tbl");
 
-        // Filter region = 'ASIA'
-        final String finalRegion = region; // Final variable for lambda expression
-        Set<Integer> asiaRegionKeys = regions.stream()
-                .filter(r -> r.name.equals(finalRegion))
+        // Parse dates
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        Date start = sdf.parse(startDate);
+        Date end = sdf.parse(endDate);
+
+        // Region filter
+        final String regionFinal = region;
+        Set<Integer> regionKeys = regions.stream()
+                .filter(r -> r.name.equals(regionFinal))
                 .map(r -> r.regionKey)
                 .collect(Collectors.toSet());
 
-        // Get nations in Asia
-        Set<Integer> asiaNationKeys = nations.stream()
-                .filter(n -> asiaRegionKeys.contains(n.regionKey))
+        Set<Integer> nationKeysInRegion = nations.stream()
+                .filter(n -> regionKeys.contains(n.regionKey))
                 .map(n -> n.nationKey)
                 .collect(Collectors.toSet());
 
-        // Get customers from nations in Asia
-        Set<Integer> customerKeysInAsia = customers.stream()
-                .filter(c -> asiaNationKeys.contains(c.nationKey))
+        Set<Integer> customerKeysInRegion = customers.stream()
+                .filter(c -> nationKeysInRegion.contains(c.nationKey))
                 .map(c -> c.custKey)
                 .collect(Collectors.toSet());
 
-        // Get orders placed by those customers
-        Set<Integer> orderKeysFromAsiaCustomers = orders.stream()
-                .filter(o -> customerKeysInAsia.contains(o.custKey))
+        Set<Integer> orderKeysFromRegion = orders.stream()
+                .filter(o -> customerKeysInRegion.contains(o.custKey))
+                .filter(o -> {
+                    try {
+                        Date orderDate = sdf.parse(o.orderDate);
+                        return !orderDate.before(start) && orderDate.before(end);
+                    } catch (Exception e) {
+                        return false;
+                    }
+                })
                 .map(o -> o.orderKey)
                 .collect(Collectors.toSet());
 
-        // Filter suppliers from nations in Asia (for join with lineitems)
         Map<Integer, Integer> supplierNationMap = suppliers.stream()
-                .filter(s -> asiaNationKeys.contains(s.nationKey))
+                .filter(s -> nationKeysInRegion.contains(s.nationKey))
                 .collect(Collectors.toMap(s -> s.suppKey, s -> s.nationKey));
 
-        // Initialize a map to store the revenue by nation
-        Map<String, Double> revenueByNation = new ConcurrentHashMap<>();  // Use ConcurrentHashMap for thread safety
+        Map<Integer, String> nationKeyToName = nations.stream()
+                .collect(Collectors.toMap(n -> n.nationKey, n -> n.name));
 
-        // ExecutorService to handle parallel execution
-        ExecutorService executor = Executors.newFixedThreadPool(numThreads);  // Use user-specified number of threads
+        // Multi-threaded execution
+        ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+        long startTime = System.currentTimeMillis();
 
-        // Submit tasks to the executor for each lineitem
+        Map<String, Double> revenueByNation = new ConcurrentHashMap<>();
+
+        int lineItemChunkSize = (int) Math.ceil((double) lineitems.size() / numThreads);
         List<Future<Void>> futures = new ArrayList<>();
-        for (LineItem li : lineitems) {
-            futures.add(executor.submit(() -> {
-                if (orderKeysFromAsiaCustomers.contains(li.orderKey) && supplierNationMap.containsKey(li.suppKey)) {
-                    int nationKey = supplierNationMap.get(li.suppKey);
-                    String nationName = nations.stream()
-                            .filter(n -> n.nationKey == nationKey)
-                            .findFirst().get().name;
 
-                    double revenue = li.extendedPrice * (1 - li.discount);
-                    revenueByNation.merge(nationName, revenue, Double::sum);  // Merge revenues safely
+        for (int i = 0; i < numThreads; i++) {
+            int chunkStart = i * lineItemChunkSize;
+            int chunkEnd = Math.min(chunkStart + lineItemChunkSize, lineitems.size());
+            List<LineItem> chunk = lineitems.subList(chunkStart, chunkEnd);
+
+            futures.add(executor.submit(() -> {
+                Map<String, Double> localRevenue = new HashMap<>();
+                for (LineItem li : chunk) {
+                    if (orderKeysFromRegion.contains(li.orderKey) && supplierNationMap.containsKey(li.suppKey)) {
+                        int nationKey = supplierNationMap.get(li.suppKey);
+                        String nationName = nationKeyToName.get(nationKey);
+                        double revenue = li.extendedPrice * (1 - li.discount);
+                        localRevenue.merge(nationName, revenue, Double::sum);
+                    }
+                }
+                for (Map.Entry<String, Double> entry : localRevenue.entrySet()) {
+                    revenueByNation.merge(entry.getKey(), entry.getValue(), Double::sum);
                 }
                 return null;
             }));
         }
 
-        // Wait for all tasks to finish
         for (Future<Void> future : futures) {
-            future.get();  // Wait for each task to complete
+            future.get();
         }
 
-        // Shutdown the executor
-        executor.shutdown();
 
-        // Sort result
+        for (Future<Void> future : futures) {
+            future.get();
+        }
+
+        executor.shutdown();
+        long endTime = System.currentTimeMillis();
+        long multiThreadedTime = endTime - startTime;
+
+        System.out.println("Multi-threaded execution time: " + multiThreadedTime + " ms");
+
+        // Single-threaded execution
+        startTime = System.currentTimeMillis();
+        revenueByNation.clear();
+
+        for (LineItem li : lineitems) {
+            if (orderKeysFromRegion.contains(li.orderKey) && supplierNationMap.containsKey(li.suppKey)) {
+                int nationKey = supplierNationMap.get(li.suppKey);
+                String nationName = nationKeyToName.get(nationKey);
+                double revenue = li.extendedPrice * (1 - li.discount);
+                revenueByNation.merge(nationName, revenue, Double::sum);
+            }
+        }
+
+        endTime = System.currentTimeMillis();
+        long singleThreadedTime = endTime - startTime;
+
+        System.out.println("Single-threaded execution time: " + singleThreadedTime + " ms");
+
+        System.out.println("==== Runtime Summary ====");
+        System.out.println("Multi-threaded time: " + multiThreadedTime + " ms");
+        System.out.println("Single-threaded time: " + singleThreadedTime + " ms");
+        System.out.printf("Speedup: %.2fx\n", (double) singleThreadedTime / multiThreadedTime);
+
+        // Sort and print results
         List<Map.Entry<String, Double>> sortedResults = revenueByNation.entrySet().stream()
                 .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
                 .collect(Collectors.toList());
 
-        // Print result
         sortedResults.forEach(entry
                 -> System.out.printf("%s: %.2f\n", entry.getKey(), entry.getValue())
         );
 
-
-                  // Save to result file
+        // Save to file
         File outputFile = new File(resultDir, "query5_result.txt");
         try (PrintWriter out = new PrintWriter(new FileWriter(outputFile))) {
             for (Map.Entry<String, Double> entry : sortedResults) {
@@ -129,7 +171,8 @@ public class Main {
             }
             System.out.println("✅ Results saved to: " + outputFile.getAbsolutePath());
         } catch (Exception e) {
-            System.err.println("❌ Failed to write result file: " + e.getMessage());
+            System.err.println("❌ Failed to write output to file.");
+            e.printStackTrace();
         }
     }
 }
